@@ -5,11 +5,14 @@
  */
 package io.mosip.esignet.entity;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import io.mosip.esignet.core.util.ClientAdditionalConfigConverter;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import javax.persistence.Column;
+import javax.persistence.Convert;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.validation.constraints.NotBlank;
@@ -45,7 +48,7 @@ public class ClientDetail {
     private String redirectUris;
 
     @NotBlank(message = INVALID_PUBLIC_KEY)
-    @Column(name = "public_key", columnDefinition = "TEXT")
+    @Column(name = "public_key", columnDefinition = "jsonb")
     private String publicKey;
 
     @NotBlank(message = INVALID_CLAIM)
@@ -73,4 +76,8 @@ public class ClientDetail {
 
     @Column(name = "upd_dtimes")
     private LocalDateTime updatedtimes;
+
+    @Convert(converter = ClientAdditionalConfigConverter.class)
+    @Column(name = "additional_config", columnDefinition = "jsonb")
+    private JsonNode additionalConfig;
 }

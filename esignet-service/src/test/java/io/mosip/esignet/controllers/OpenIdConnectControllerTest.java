@@ -6,12 +6,11 @@
 package io.mosip.esignet.controllers;
 
 import io.mosip.esignet.api.spi.AuditPlugin;
-import io.mosip.esignet.core.dto.vci.ParsedAccessToken;
+import io.mosip.esignet.core.config.LocalAuthenticationEntryPoint;
 import io.mosip.esignet.core.exception.NotAuthenticatedException;
 import io.mosip.esignet.core.spi.OpenIdConnectService;
 import io.mosip.esignet.core.spi.TokenService;
 import io.mosip.esignet.services.CacheUtilService;
-import io.mosip.esignet.vci.services.VCICacheService;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,10 +55,7 @@ public class OpenIdConnectControllerTest {
     AuditPlugin auditWrapper;
 
     @MockBean
-    ParsedAccessToken parsedAccessToken;
-
-    @MockBean
-    VCICacheService vciCacheService;
+    LocalAuthenticationEntryPoint localAuthenticationEntryPoint;
 
 
     @Test

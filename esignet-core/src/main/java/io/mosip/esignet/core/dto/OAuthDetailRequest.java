@@ -5,15 +5,12 @@
  */
 package io.mosip.esignet.core.dto;
 
-import io.mosip.esignet.api.dto.claim.Claims;
 import io.mosip.esignet.api.dto.claim.ClaimsV2;
-import io.mosip.esignet.core.validator.OIDCDisplay;
-import io.mosip.esignet.core.validator.OIDCPrompt;
-import io.mosip.esignet.core.validator.OIDCResponseType;
-import io.mosip.esignet.core.validator.OIDCScope;
+import io.mosip.esignet.core.constants.ErrorConstants;
+import io.mosip.esignet.core.validator.*;
 import lombok.Data;
 
-import io.mosip.esignet.core.validator.RedirectURL;
+import javax.validation.Valid;
 import javax.validation.constraints.NotBlank;
 
 import static io.mosip.esignet.core.constants.ErrorConstants.INVALID_CLIENT_ID;
@@ -73,6 +70,8 @@ public class OAuthDetailRequest {
      * The userinfo and id_token members of the claims request both are JSON objects with the
      * names of the individual Claims being requested as the member names.
      */
+    @Valid
+    @ClaimsSchema(message = ErrorConstants.INVALID_CLAIM)
     private ClaimsV2 claims;
 
     /**

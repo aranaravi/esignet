@@ -7,8 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.util.Optional;
 
-import io.mosip.esignet.core.dto.vci.ParsedAccessToken;
-import io.mosip.esignet.vci.services.VCICacheService;
+import io.mosip.esignet.core.config.LocalAuthenticationEntryPoint;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
@@ -50,11 +49,8 @@ public class SystemInfoControllerTest {
     AuditPlugin auditWrapper;
 
     @MockBean
-    ParsedAccessToken parsedAccessToken;
-
-    @MockBean
-    VCICacheService vciCacheService;
-
+    LocalAuthenticationEntryPoint localAuthenticationEntryPoint;
+    
     @Test
     public void getCertificate_withValidRequest_thenPass() throws Exception {
         String applicationId = "test";

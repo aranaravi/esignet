@@ -7,15 +7,14 @@ package io.mosip.esignet.controllers;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosip.esignet.api.spi.AuditPlugin;
+import io.mosip.esignet.core.config.LocalAuthenticationEntryPoint;
 import io.mosip.esignet.core.dto.TokenRequest;
 import io.mosip.esignet.core.dto.TokenResponse;
-import io.mosip.esignet.core.dto.vci.ParsedAccessToken;
 import io.mosip.esignet.core.exception.EsignetException;
 import io.mosip.esignet.core.exception.InvalidRequestException;
 import io.mosip.esignet.core.spi.OAuthService;
 import io.mosip.esignet.services.AuthorizationHelperService;
 import io.mosip.esignet.services.CacheUtilService;
-import io.mosip.esignet.vci.services.VCICacheService;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
@@ -53,13 +52,10 @@ public class OAuthControllerTest {
     CacheUtilService cacheUtilService;
 
     @MockBean
-    ParsedAccessToken parsedAccessToken;
-
-    @MockBean
-    VCICacheService vciCacheService;
-
-    @MockBean
     AuthorizationHelperService authorizationHelperService;
+
+    @MockBean
+    LocalAuthenticationEntryPoint localAuthenticationEntryPoint;
 
     @Test
     public void getAllJwks_thenPass() throws Exception {
@@ -167,5 +163,19 @@ public class OAuthControllerTest {
                         .param("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
                         .param("client_assertion", "client_assertion"))
                 .andExpect(status().isInternalServerError());
+    }
+
+    @Test
+    public void getOAuthDiscoveryInfo_thenPass() throws Exception {
+
+        Map<String, Object> discoveryInfo = new HashMap<>();
+        discoveryInfo.put("key", "value");
+        Mockito.when(oAuthServiceImpl.getOAuthServerDiscoveryInfo()).thenReturn(discoveryInfo);
+
+        mockMvc.perform(get("/oauth/.well-known/oauth-authorization-server")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().string("{\"key\":\"value\"}"))
+                .andExpect(header().string("Content-Type", "application/json"));
     }
 }

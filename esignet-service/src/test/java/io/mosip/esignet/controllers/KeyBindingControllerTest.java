@@ -12,19 +12,17 @@ import io.mosip.esignet.TestUtil;
 import io.mosip.esignet.api.dto.AuthChallenge;
 import io.mosip.esignet.api.spi.AuditPlugin;
 import io.mosip.esignet.api.spi.Authenticator;
+import io.mosip.esignet.core.config.LocalAuthenticationEntryPoint;
 import io.mosip.esignet.core.constants.ErrorConstants;
 import io.mosip.esignet.core.dto.Error;
 import io.mosip.esignet.core.dto.*;
-import io.mosip.esignet.core.dto.vci.ParsedAccessToken;
 import io.mosip.esignet.core.spi.KeyBindingService;
 import io.mosip.esignet.core.util.IdentityProviderUtil;
 import io.mosip.esignet.services.CacheUtilService;
-import io.mosip.esignet.vci.services.VCICacheService;
 import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
-import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -72,13 +70,10 @@ public class KeyBindingControllerTest {
 	Authenticator authenticationWrapper;
 
 	@MockBean
-	ParsedAccessToken parsedAccessToken;
-
-	@MockBean
-	VCICacheService vciCacheService;
-
-	@MockBean
 	AuditPlugin auditPlugin;
+
+	@MockBean
+	LocalAuthenticationEntryPoint localAuthenticationEntryPoint;
 
 	@Test
 	public void sendBindingOtp_withValidRequest_thenPass() throws Exception {
@@ -141,6 +136,72 @@ public class KeyBindingControllerTest {
 		when(keyBindingService.sendBindingOtp(otpRequest, headers)).thenReturn(otpResponse);
 
 		mockMvc.perform(post("/binding/binding-otp").content(objectMapper.writeValueAsString(wrapper))
+						.contentType(MediaType.APPLICATION_JSON)).andExpect(status().isOk())
+				.andExpect(jsonPath("$.errors").isNotEmpty())
+				.andExpect(jsonPath("$.errors[0].errorCode").value(ErrorConstants.INVALID_OTP_CHANNEL));
+	}
+
+	@Test
+	public void sendBindingOtpV2_withValidRequest_thenPass() throws Exception {
+		BindingOtpRequest otpRequest = new BindingOtpRequest();
+		otpRequest.setIndividualId("8267411571");
+		otpRequest.setOtpChannels(Arrays.asList("email"));
+		ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
+		RequestWrapper wrapper = new RequestWrapper<>();
+		wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
+		wrapper.setRequest(otpRequest);
+
+		BindingOtpResponse otpResponse = new BindingOtpResponse();
+		Map<String, String> headers = new HashMap<>();
+		headers.put("Content-Type", "application/json;charset=UTF-8");
+		headers.put("Content-Length", "106");
+		when(keyBindingService.sendBindingOtp(otpRequest, headers)).thenReturn(otpResponse);
+		when(authenticationWrapper.isSupportedOtpChannel(Mockito.anyString())).thenReturn(true);
+
+		mockMvc.perform(post("/binding/v2/binding-otp").content(objectMapper.writeValueAsString(wrapper))
+				.contentType(MediaType.APPLICATION_JSON)).andExpect(status().isOk());
+	}
+
+	@Test
+	public void sendBindingOtpV2_withInvalidIndividualId_thenFail() throws Exception {
+		BindingOtpRequest otpRequest = new BindingOtpRequest();
+		otpRequest.setIndividualId("");
+		otpRequest.setOtpChannels(Arrays.asList("email"));
+		ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
+		RequestWrapper wrapper = new RequestWrapper<>();
+		wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
+		wrapper.setRequest(otpRequest);
+
+		BindingOtpResponse otpResponse = new BindingOtpResponse();
+		Map<String, String> headers = new HashMap<>();
+		headers.put("Content-Type", "application/json;charset=UTF-8");
+		headers.put("Content-Length", "106");
+		when(keyBindingService.sendBindingOtp(otpRequest, headers)).thenReturn(otpResponse);
+		when(authenticationWrapper.isSupportedOtpChannel(Mockito.anyString())).thenReturn(true);
+
+		mockMvc.perform(post("/binding/v2/binding-otp").content(objectMapper.writeValueAsString(wrapper))
+						.contentType(MediaType.APPLICATION_JSON)).andExpect(status().isOk())
+				.andExpect(jsonPath("$.errors").isNotEmpty())
+				.andExpect(jsonPath("$.errors[0].errorCode").value(INVALID_IDENTIFIER));
+	}
+
+	@Test
+	public void sendBindingOtpV2_withInvalidChannel_thenPass() throws Exception {
+		BindingOtpRequest otpRequest = new BindingOtpRequest();
+		otpRequest.setIndividualId("121323123s");
+		otpRequest.setOtpChannels(Arrays.asList());
+		ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
+		RequestWrapper wrapper = new RequestWrapper<>();
+		wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
+		wrapper.setRequest(otpRequest);
+
+		BindingOtpResponse otpResponse = new BindingOtpResponse();
+		Map<String, String> headers = new HashMap<>();
+		headers.put("Content-Type", "application/json;charset=UTF-8");
+		headers.put("Content-Length", "106");
+		when(keyBindingService.sendBindingOtp(otpRequest, headers)).thenReturn(otpResponse);
+
+		mockMvc.perform(post("/binding/v2/binding-otp").content(objectMapper.writeValueAsString(wrapper))
 						.contentType(MediaType.APPLICATION_JSON)).andExpect(status().isOk())
 				.andExpect(jsonPath("$.errors").isNotEmpty())
 				.andExpect(jsonPath("$.errors[0].errorCode").value(ErrorConstants.INVALID_OTP_CHANNEL));

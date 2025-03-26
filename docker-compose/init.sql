@@ -27,21 +27,23 @@ ALTER DATABASE mosip_esignet SET search_path TO esignet,pg_catalog,public;
 
 CREATE TABLE esignet.client_detail(
   id character varying(100) NOT NULL,
-  name character varying(256) NOT NULL,
+  name character varying(600) NOT NULL,
   rp_id character varying(100) NOT NULL,
   logo_uri character varying(2048) NOT NULL,
   redirect_uris character varying NOT NULL,
   claims character varying NOT NULL,
   acr_values character varying NOT NULL,
-  public_key character varying NOT NULL,
+  public_key jsonb NOT NULL,
   grant_types character varying NOT NULL,
   auth_methods character varying NOT NULL,
   status character varying(20) NOT NULL,
+  additional_config jsonb,
   cr_dtimes timestamp NOT NULL,
   upd_dtimes timestamp,
-  CONSTRAINT pk_clntdtl_id PRIMARY KEY (id),
-  CONSTRAINT uk_clntdtl_key UNIQUE (public_key)
+  CONSTRAINT pk_clntdtl_id PRIMARY KEY (id)
 );
+
+CREATE UNIQUE INDEX unique_n_value ON esignet.client_detail ((public_key->>'n'));
 
 create table esignet.consent_detail (
     id UUID NOT NULL,
@@ -217,6 +219,20 @@ CREATE TABLE mockidentitysystem.mock_identity(
   individual_id VARCHAR(36) NOT NULL,
   identity_json VARCHAR NOT NULL,
     CONSTRAINT pk_mock_id_code PRIMARY KEY (individual_id)
+);
+
+CREATE TABLE mockidentitysystem.verified_claim(
+    id VARCHAR(100) NOT NULL,
+	individual_id VARCHAR(36) NOT NULL,
+	claim VARCHAR NOT NULL,
+	trust_framework VARCHAR NOT NULL,
+	detail VARCHAR,
+	cr_by character varying(256) NOT NULL,
+    cr_dtimes timestamp NOT NULL,
+    upd_by character varying(256),
+    upd_dtimes timestamp,
+    is_active boolean DEFAULT TRUE,
+    CONSTRAINT pk_verified_claim_id PRIMARY KEY (id)
 );
 
 INSERT INTO mockidentitysystem.KEY_POLICY_DEF(APP_ID,KEY_VALIDITY_DURATION,PRE_EXPIRE_DAYS,ACCESS_ALLOWED,IS_ACTIVE,CR_BY,CR_DTIMES) VALUES('ROOT', 2920, 1125, 'NA', true, 'mosipadmin', now());

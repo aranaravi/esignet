@@ -1,4 +1,4 @@
-## e-Signet Service
+## eSignet Service
 
 * AuthorizationController - All the endpoints used by oidc-ui to begin the OIDC transaction, authenticate, take consent and generate auth-code.
 * ClientManagementController - Endpoints to create/update OIDC clients
@@ -7,76 +7,30 @@
 * OpenIdController - Endpoints specific to OIDC protocol like /userinfo and /.well-known/openid-configuration
 * SystemInfoController - Endpoints to get the pet public part of the keys managed in the keystore by keymanager.
 * KeyBindingController - Endpoints used by wallets to bind a key to an individual ID to support wallet local authentication.
-* VCIController - Wallet initiated /credential endpoint returning just in time credential and /.well-known/openid-credential-issuer endpoint specific to [OpenID4VCI specification](https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html)
 
-Note: VCI implementations currently only supports ldp_vc format with 'jwt' PoP. And we only issue scope based VC. 
-Both mock plugin and the MOSIP IDA plugin supports only scoped based VC issuance.
+Note: VCI implementations are permanently moved to Inji-Certify.
 
-## e-Signet Plugins
+## eSignet Plugins
 1. We have well-defined plugin interfaces in esignet-intergration-api. 
 2. Mock plugin implementations and the MOSIP specific plugin implementations are available.
 3. Check the below URL for more details:
 
- > https://github.com/mosip/esignet-mock-services/tree/master/mock-esignet-integration-impl
-
- > https://github.com/mosip/id-authentication/tree/master/authentication/esignet-integration-impl
+ > https://github.com/mosip/esignet-plugins/tree/master
 
  > https://github.com/mosip/digital-credential-plugins
 
 4. All the required plugins are runtime dependency to esignet-service.
 
-![](/docs/esignet-service-basic-interations.png)
+![](../docs/esignet-service-basic-interactions.png)
 
-## Local setup of e-Signet with mock plugins
+## Local setup of eSignet with mock plugins
 
-1. Create database mosip_esignet.
-2. Run all the scripts under db_scripts/mosip_esignet/ddl folder.
-3. Run the below insert statements in mosip_esignet database:
-
-   > INSERT INTO KEY_POLICY_DEF(APP_ID,KEY_VALIDITY_DURATION,PRE_EXPIRE_DAYS,ACCESS_ALLOWED,IS_ACTIVE,CR_BY,CR_DTIMES) VALUES ('ROOT', 1095, 50, 'NA', true, 'mosipadmin', now());
-
-   > INSERT INTO KEY_POLICY_DEF(APP_ID,KEY_VALIDITY_DURATION,PRE_EXPIRE_DAYS,ACCESS_ALLOWED,IS_ACTIVE,CR_BY,CR_DTIMES) VALUES ('OIDC_SERVICE', 1095, 50, 'NA', true, 'mosipadmin', now());
-
-   > INSERT INTO KEY_POLICY_DEF(APP_ID,KEY_VALIDITY_DURATION,PRE_EXPIRE_DAYS,ACCESS_ALLOWED,IS_ACTIVE,CR_BY,CR_DTIMES) VALUES ('OIDC_PARTNER', 1095, 50, 'NA', true, 'mosipadmin', now());
-
-   > INSERT INTO KEY_POLICY_DEF(APP_ID,KEY_VALIDITY_DURATION,PRE_EXPIRE_DAYS,ACCESS_ALLOWED,IS_ACTIVE,CR_BY,CR_DTIMES) VALUES ('BINDING_SERVICE', 1095, 50, 'NA', true, 'mosipadmin', now());
-
-   > INSERT INTO KEY_POLICY_DEF(APP_ID,KEY_VALIDITY_DURATION,PRE_EXPIRE_DAYS,ACCESS_ALLOWED,IS_ACTIVE,CR_BY,CR_DTIMES) VALUES ('MOCK_BINDING_SERVICE', 1095, 50, 'NA', true, 'mosipadmin', now());
-   
-4. Build the plugin jar from below repo and add the built plugin jar as runtime dependency in esignet-service
-  
-   > https://github.com/mosip/esignet-mock-services/tree/master/mock-esignet-integration-impl
-
-5. Build the current esignet repository with the below command:
-   
-   > mvn clean install -Dgpg.skip=true -DskipTests=true
-
-6. Run the below command to start the esignet-service with mock plugin
-
-   > java -jar -Dloader.path=mock-esignet-integration-impl.jar esignet-service.jar
-
-7. Once the service is up, swagger should be accessible with the below URL
-
-   > http://localhost:8088/v1/esignet/swagger-ui.html
-
-8. Mock plugins connect to mock-identity-system, refer below document to start mock-identity-system in parallel
-   
-   > https://github.com/mosip/esignet-mock-services/tree/master/mock-identity-system#local-setup-of-mock-identity-system
-
-9. Also find the latest postman collection under "docs/postman-collections" folder with environment json
-
-   Order of execution in postman script for OIDC flow is:
-     * Create identity
-     * Create OIDC client
-     * Authorize / OAuthdetails request
-     * Send OTP 
-     * Authenticate user
-     * Authorization Code
-     * Get Tokens
-     * Get Userinfo
-
+Kindly check our docker compose setup files to run eSignet locally [here](../docker-compose)
 
 ## Caching details
+
+All the transaction details are stored in cache. We support simple(in-memory) and redis cache. The way transaction is added or evicted from 
+the caches on every stage of OIDC transaction is detailed in the below tables.
 
 UI transaction
 
@@ -104,9 +58,69 @@ Linked transactions
 | userinfo |                                                                                                         |                                                                                                                                                                     |
 
 
+eKYC verification transaction
+
+| Endpoint                               | Cache                                                | Evict                                                |
+|----------------------------------------|------------------------------------------------------|------------------------------------------------------|
+| oauthDetails                           | preauth (k: transactionId, v: OIDCTransaction)       |                                                      |
+| authenticate                           | authenticated (k: transactionId, v: OIDCTransaction) | preauth (k: transactionId, v: OIDCTransaction)       |
+| claim-details(limited to 1 invocation) | authenticated (k: transactionId, v: OIDCTransaction) |                                                      |
+| prepare-signup-redirect                | halted (k: transactionId, v: OIDCTransaction)        | authenticated (k: transactionId, v: OIDCTransaction) |
+| complete-signup-redirect               | authenticated (k: transactionId, v: OIDCTransaction) | halted (k: transactionId, v: OIDCTransaction)        |
+| authCode                               | authcodegenerated (k: codeHash, v: OIDCTransaction)  | authenticated (k: transactionId, v: OIDCTransaction) |
+| token                                  | userinfo   (k: accessTokenHash, v: OIDCTransaction)  | authcodegenerated  (k: codeHash, v: OIDCTransaction) |
+| userinfo                               |                                                      |                                                      |
+
+
+## eSignet Service Configuration
+
+We've set up the eSignet service and OIDC UI so that they can run independently, without needing an external configuration server or Artifactory server. Here’s a breakdown of how to configure and customize these services in different environments.
+
+**Profile Configurations**
+
+The eSignet service comes with two profile-based property files, each designed to help with different deployment needs:
+
+* Default Profile Properties File (application-default.properties)
+
+This file contains properties with ideal default values suited for a typical deployment.
+
+* Local Profile Properties File (application-local.properties)
+
+This file only includes properties that need to be overridden to run the eSignet service in a local environment.
+
+**Note:** The bootstrap.properties file is configured to enable multiple profile mode "default,local", allowing easy local setup.
+
+**Using Placeholders**
+
+In application-default.properties, we use placeholders for values that are defined in the eSignet deployment scripts. 
+This allows you to easily substitute values as needed without modifying the properties file directly. 
+
+**Running eSignet in a Docker Container**
+
+When running eSignet in Docker, you can override properties by setting environment variables. Spring Boot conveniently converts property names to an uppercase format with underscores, making it easy to map properties as needed.
+
+For example:
+
+* spring.datasource.url maps to SPRING_DATASOURCE_URL
+* mosip.esignet.domain.url maps to MOSIP_ESIGNET_DOMAIN_URL
+* mosip.kernel.keymanager.hsm.keystore-type maps to MOSIP_KERNEL_KEYMANAGER_HSM_KEYSTORE_TYPE
+
+**Flexible Configuration with or without a Config Server**
+
+The eSignet service can run independently of a config server, yet remains flexible. If you need to connect it to an external configuration server, you can easily do so by setting the following environment variables in the Docker container:
+
+* SPRING_CONFIG_LABEL_ENV
+* ACTIVE_PROFILE_ENV
+* SPRING_CONFIG_URL_ENV
+
+This approach gives you the flexibility to run eSignet in a standalone mode or connect it to an external configuration server as your setup requires.
+
+## API document
+
+eSignet API documentation can be found [here](../docs/esignet-openapi.yaml)
 
 ## Databases
-Refer to [SQL scripts](db_scripts/mosip_esignet).
+Refer to [SQL scripts](../db_scripts/mosip_esignet).
 
 ## License
-This project is licensed under the terms of [Mozilla Public License 2.0](LICENSE).
+This project is licensed under the terms of [Mozilla Public License 2.0](../LICENSE).

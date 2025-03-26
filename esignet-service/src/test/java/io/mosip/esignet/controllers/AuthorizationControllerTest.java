@@ -5,13 +5,17 @@
  */
 package io.mosip.esignet.controllers;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosip.esignet.api.dto.AuthChallenge;
+import io.mosip.esignet.api.dto.claim.ClaimDetail;
+import io.mosip.esignet.api.dto.claim.ClaimsV2;
 import io.mosip.esignet.api.spi.AuditPlugin;
 import io.mosip.esignet.api.util.ConsentAction;
+import io.mosip.esignet.core.config.LocalAuthenticationEntryPoint;
 import io.mosip.esignet.core.dto.*;
 import io.mosip.esignet.core.dto.Error;
-import io.mosip.esignet.core.dto.vci.ParsedAccessToken;
 import io.mosip.esignet.core.exception.EsignetException;
 import io.mosip.esignet.core.exception.InvalidTransactionException;
 import io.mosip.esignet.core.spi.AuthorizationService;
@@ -20,22 +24,22 @@ import io.mosip.esignet.core.constants.ErrorConstants;
 import io.mosip.esignet.core.util.IdentityProviderUtil;
 import io.mosip.esignet.services.AuthorizationHelperService;
 import io.mosip.esignet.services.CacheUtilService;
-import io.mosip.esignet.vci.services.VCICacheService;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+
 import org.springframework.http.MediaType;
-import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.web.client.RestTemplate;
 
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
@@ -76,21 +80,52 @@ public class AuthorizationControllerTest {
     @MockBean
     CacheUtilService cacheUtilService;
 
-    @MockBean
-    ParsedAccessToken parsedAccessToken;
 
     @MockBean
-    VCICacheService vciCacheService;
+    RestTemplate restTemplate;
+
+    @MockBean
+    LocalAuthenticationEntryPoint localAuthenticationEntryPoint;
+
+
+    @Value("${mosip.esignet.claims.schema.url}")
+    private String schemaUrl;
 
     ObjectMapper objectMapper = new ObjectMapper();
 
+    ClaimDetail claimDetail;
+
+    ClaimsV2 claimsV2;
+
+
+
     @Before
-    public void init() throws EsignetException {
+    public void init() throws EsignetException, JsonProcessingException {
         HashSet<String> acrValues = new HashSet<>();
         acrValues.add("mosip:idp:acr:static-code");
         acrValues.add("mosip:idp:acr:biometrics");
         acrValues.add("mosip:idp:acr:linked-wallet");
         when(authenticationContextClassRefUtil.getSupportedACRValues()).thenReturn(acrValues);
+
+        String address="{\"essential\":true}";
+        String verifiedClaims="[{\"verification\":{\"trust_framework\":{\"value\":\"pwd\"}},\"claims\":{\"name\":null,\"email\":{\"essential\":1}}},{\"verification\":{\"trust_framework\":{\"value\":\"pwd\"}},\"claims\":{\"birthdate\":{\"essential\":true},\"address\":null}},{\"verification\":{\"trust_framework\":{\"value\":\"kaif\"}},\"claims\":{\"gender\":{\"essential\":true},\"email\":{\"essential\":true}}}]";
+
+        JsonNode addressNode = objectMapper.readValue(address, JsonNode.class);
+        JsonNode verifiedClaimNode = objectMapper.readValue(verifiedClaims, JsonNode.class);
+
+        Map<String, JsonNode> userinfoMap = new HashMap<>();
+        userinfoMap.put("address", addressNode);
+        userinfoMap.put("verified_claims", verifiedClaimNode);
+        Map<String, ClaimDetail> idTokenMap = new HashMap<>();
+
+
+        claimDetail = new ClaimDetail("claim_value", null, true, "secondary");
+
+        idTokenMap.put("some_claim", claimDetail);
+        ClaimsV2 claimsV2 = new ClaimsV2();
+        claimsV2.setUserinfo(userinfoMap);
+        claimsV2.setId_token(idTokenMap);
+
     }
 
 
@@ -131,6 +166,7 @@ public class AuthorizationControllerTest {
         oauthDetailRequest.setPrompt("login");
         oauthDetailRequest.setResponseType("code");
         oauthDetailRequest.setNonce("23424234TY");
+        oauthDetailRequest.setClaims(claimsV2);
         ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
         RequestWrapper wrapper = new RequestWrapper<>();
         wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
@@ -155,10 +191,12 @@ public class AuthorizationControllerTest {
         oauthDetailRequest.setPrompt("login");
         oauthDetailRequest.setResponseType("code");
         oauthDetailRequest.setNonce("23424234TY");
+        oauthDetailRequest.setClaims(claimsV2);
         ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
         RequestWrapper wrapper = new RequestWrapper<>();
         wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
         wrapper.setRequest(oauthDetailRequest);
+
 
         OAuthDetailResponseV1 oauthDetailResponse = new OAuthDetailResponseV1();
         oauthDetailResponse.setTransactionId("qwertyId");
@@ -182,6 +220,7 @@ public class AuthorizationControllerTest {
         oauthDetailRequest.setPrompt("login");
         oauthDetailRequest.setResponseType("code");
         oauthDetailRequest.setNonce("23424234TY");
+        oauthDetailRequest.setClaims(claimsV2);
         ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
         RequestWrapper wrapper = new RequestWrapper<>();
         wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
@@ -206,6 +245,7 @@ public class AuthorizationControllerTest {
         oauthDetailRequest.setPrompt("touch");
         oauthDetailRequest.setResponseType("code");
         oauthDetailRequest.setNonce("23424234TY");
+        oauthDetailRequest.setClaims(claimsV2);
         ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
         RequestWrapper wrapper = new RequestWrapper<>();
         wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
@@ -230,6 +270,7 @@ public class AuthorizationControllerTest {
         oauthDetailRequest.setPrompt("none");
         oauthDetailRequest.setResponseType("implicit");
         oauthDetailRequest.setNonce("23424234TY");
+        oauthDetailRequest.setClaims(claimsV2);
         ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
         RequestWrapper wrapper = new RequestWrapper<>();
         wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
@@ -254,6 +295,7 @@ public class AuthorizationControllerTest {
         oauthDetailRequest.setPrompt("login");
         oauthDetailRequest.setResponseType("code");
         oauthDetailRequest.setNonce("23424234TY");
+        oauthDetailRequest.setClaims(claimsV2);
         ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
         RequestWrapper wrapper = new RequestWrapper<>();
         wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
@@ -281,6 +323,7 @@ public class AuthorizationControllerTest {
         oauthDetailRequest.setPrompt("login");
         oauthDetailRequest.setResponseType("code");
         oauthDetailRequest.setNonce("23424234TY");
+        oauthDetailRequest.setClaims(claimsV2);
         ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
         RequestWrapper wrapper = new RequestWrapper<>();
         wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
@@ -305,6 +348,7 @@ public class AuthorizationControllerTest {
         oauthDetailRequest.setPrompt("login");
         oauthDetailRequest.setResponseType("code");
         oauthDetailRequest.setNonce("23424234TY");
+        oauthDetailRequest.setClaims(claimsV2);
         ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
         RequestWrapper wrapper = new RequestWrapper<>();
         wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
@@ -332,6 +376,7 @@ public class AuthorizationControllerTest {
         oauthDetailRequest.setPrompt("login");
         oauthDetailRequest.setResponseType("code");
         oauthDetailRequest.setNonce("23424234TY");
+        oauthDetailRequest.setClaims(claimsV2);
         ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
         RequestWrapper wrapper = new RequestWrapper<>();
         wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
@@ -359,6 +404,7 @@ public class AuthorizationControllerTest {
         oauthDetailRequest.setPrompt("login");
         oauthDetailRequest.setResponseType("code");
         oauthDetailRequest.setNonce("23424234TY");
+        oauthDetailRequest.setClaims(claimsV2);
         ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
         RequestWrapper wrapper = new RequestWrapper<>();
         wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
@@ -369,6 +415,22 @@ public class AuthorizationControllerTest {
         when(authorizationService.getOauthDetails( oauthDetailRequest)).thenReturn(oauthDetailResponse);
 
         mockMvc.perform(post("/authorization/oauth-details")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.transactionId").value("qwertyId"));
+
+        OAuthDetailResponseV2 oauthDetailResponseV2 = new OAuthDetailResponseV2();
+        oauthDetailResponseV2.setTransactionId("qwertyId");
+        when(authorizationService.getOauthDetailsV2(Mockito.any())).thenReturn(oauthDetailResponseV2);
+        mockMvc.perform(post("/authorization/v2/oauth-details")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.transactionId").value("qwertyId"));
+
+        when(authorizationService.getOauthDetailsV3(Mockito.any(), Mockito.any())).thenReturn(oauthDetailResponseV2);
+        mockMvc.perform(post("/authorization/v3/oauth-details")
                         .content(objectMapper.writeValueAsString(wrapper))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
@@ -386,6 +448,7 @@ public class AuthorizationControllerTest {
 
         oauthDetailRequest.setResponseType("code");
         oauthDetailRequest.setNonce("23424234TY");
+        oauthDetailRequest.setClaims(claimsV2);
 
         ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
         requestTime = requestTime.plusMinutes(10);
@@ -394,6 +457,14 @@ public class AuthorizationControllerTest {
         wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
         wrapper.setRequest(oauthDetailRequest);
         mockMvc.perform(post("/authorization/v2/oauth-details")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors").isNotEmpty())
+                .andExpect(jsonPath("$.errors[0].errorCode").value(ErrorConstants.INVALID_REQUEST))
+                .andExpect(jsonPath("$.errors[0].errorMessage").value("requestTime: invalid_request"));
+
+        mockMvc.perform(post("/authorization/v3/oauth-details")
                         .content(objectMapper.writeValueAsString(wrapper))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
@@ -412,12 +483,20 @@ public class AuthorizationControllerTest {
         oauthDetailRequest.setPrompt("login");
         oauthDetailRequest.setResponseType("code");
         oauthDetailRequest.setNonce("23424234TY");
+        oauthDetailRequest.setClaims(claimsV2);
         ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
         RequestWrapper wrapper = new RequestWrapper<>();
         wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
         wrapper.setRequest(oauthDetailRequest);
 
         mockMvc.perform(post("/authorization/v2/oauth-details")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors").isNotEmpty())
+                .andExpect(jsonPath("$.errors[0].errorCode").value(ErrorConstants.INVALID_REDIRECT_URI));
+
+        mockMvc.perform(post("/authorization/v3/oauth-details")
                         .content(objectMapper.writeValueAsString(wrapper))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
@@ -436,6 +515,7 @@ public class AuthorizationControllerTest {
         oauthDetailRequest.setPrompt("login");
         oauthDetailRequest.setResponseType("code");
         oauthDetailRequest.setNonce("23424234TY");
+        oauthDetailRequest.setClaims(claimsV2);
         ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
         RequestWrapper wrapper = new RequestWrapper<>();
         wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
@@ -446,6 +526,13 @@ public class AuthorizationControllerTest {
         when(authorizationService.getOauthDetailsV2(oauthDetailRequest)).thenReturn(oauthDetailResponseV2);
 
         mockMvc.perform(post("/authorization/v2/oauth-details")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.transactionId").value("qwertyId"));
+
+        when(authorizationService.getOauthDetailsV3(Mockito.any(), Mockito.any())).thenReturn(oauthDetailResponseV2);
+        mockMvc.perform(post("/authorization/v3/oauth-details")
                         .content(objectMapper.writeValueAsString(wrapper))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
@@ -464,12 +551,20 @@ public class AuthorizationControllerTest {
         oauthDetailRequest.setResponseType("code");
         oauthDetailRequest.setNonce("23424234TY");
         oauthDetailRequest.setCodeChallenge("123");
+        oauthDetailRequest.setClaims(claimsV2);
         ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
         RequestWrapper wrapper = new RequestWrapper<>();
         wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
         wrapper.setRequest(oauthDetailRequest);
 
         mockMvc.perform(post("/authorization/v2/oauth-details")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors").isNotEmpty())
+                .andExpect(jsonPath("$.errors[0].errorCode").value(ErrorConstants.INVALID_PKCE_CHALLENGE));
+
+        mockMvc.perform(post("/authorization/v3/oauth-details")
                         .content(objectMapper.writeValueAsString(wrapper))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
@@ -490,12 +585,20 @@ public class AuthorizationControllerTest {
         oauthDetailRequest.setNonce("23424234TY");
         oauthDetailRequest.setCodeChallenge("123");
         oauthDetailRequest.setCodeChallengeMethod("S123");
+        oauthDetailRequest.setClaims(claimsV2);
         ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
         RequestWrapper wrapper = new RequestWrapper<>();
         wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
         wrapper.setRequest(oauthDetailRequest);
 
         mockMvc.perform(post("/authorization/v2/oauth-details")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors").isNotEmpty())
+                .andExpect(jsonPath("$.errors[0].errorCode").value(ErrorConstants.UNSUPPORTED_PKCE_CHALLENGE_METHOD));
+
+        mockMvc.perform(post("/authorization/v3/oauth-details")
                         .content(objectMapper.writeValueAsString(wrapper))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
@@ -515,12 +618,20 @@ public class AuthorizationControllerTest {
         oauthDetailRequest.setPrompt("login");
         oauthDetailRequest.setResponseType("code");
         oauthDetailRequest.setNonce("23424234TY");
+        oauthDetailRequest.setClaims(claimsV2);
         ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
         RequestWrapper wrapper = new RequestWrapper<>();
         wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
         wrapper.setRequest(oauthDetailRequest);
 
         mockMvc.perform(post("/authorization/v2/oauth-details")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors").isNotEmpty())
+                .andExpect(jsonPath("$.errors[0].errorCode").value(ErrorConstants.INVALID_DISPLAY));
+
+        mockMvc.perform(post("/authorization/v3/oauth-details")
                         .content(objectMapper.writeValueAsString(wrapper))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
@@ -539,12 +650,20 @@ public class AuthorizationControllerTest {
         oauthDetailRequest.setPrompt("touch");
         oauthDetailRequest.setResponseType("code");
         oauthDetailRequest.setNonce("23424234TY");
+        oauthDetailRequest.setClaims(claimsV2);
         ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
         RequestWrapper wrapper = new RequestWrapper<>();
         wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
         wrapper.setRequest(oauthDetailRequest);
 
         mockMvc.perform(post("/authorization/v2/oauth-details")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors").isNotEmpty())
+                .andExpect(jsonPath("$.errors[0].errorCode").value(ErrorConstants.INVALID_PROMPT));
+
+        mockMvc.perform(post("/authorization/v3/oauth-details")
                         .content(objectMapper.writeValueAsString(wrapper))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
@@ -563,12 +682,20 @@ public class AuthorizationControllerTest {
         oauthDetailRequest.setPrompt("none");
         oauthDetailRequest.setResponseType("implicit");
         oauthDetailRequest.setNonce("23424234TY");
+        oauthDetailRequest.setClaims(claimsV2);
         ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
         RequestWrapper wrapper = new RequestWrapper<>();
         wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
         wrapper.setRequest(oauthDetailRequest);
 
         mockMvc.perform(post("/authorization/v2/oauth-details")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors").isNotEmpty())
+                .andExpect(jsonPath("$.errors[0].errorCode").value(ErrorConstants.INVALID_RESPONSE_TYPE));
+
+        mockMvc.perform(post("/authorization/v3/oauth-details")
                         .content(objectMapper.writeValueAsString(wrapper))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
@@ -587,6 +714,7 @@ public class AuthorizationControllerTest {
         oauthDetailRequest.setPrompt("login");
         oauthDetailRequest.setResponseType("code");
         oauthDetailRequest.setNonce("23424234TY");
+        oauthDetailRequest.setClaims(claimsV2);
         ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
         RequestWrapper wrapper = new RequestWrapper<>();
         wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
@@ -597,6 +725,13 @@ public class AuthorizationControllerTest {
         when(authorizationService.getOauthDetailsV2(oauthDetailRequest)).thenReturn(oauthDetailResponseV2);
 
         mockMvc.perform(post("/authorization/v2/oauth-details")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.transactionId").value("qwertyId"));
+
+        when(authorizationService.getOauthDetailsV3(Mockito.any(), Mockito.any())).thenReturn(oauthDetailResponseV2);
+        mockMvc.perform(post("/authorization/v3/oauth-details")
                         .content(objectMapper.writeValueAsString(wrapper))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
@@ -614,12 +749,20 @@ public class AuthorizationControllerTest {
         oauthDetailRequest.setPrompt("login");
         oauthDetailRequest.setResponseType("code");
         oauthDetailRequest.setNonce("23424234TY");
+        oauthDetailRequest.setClaims(claimsV2);
         ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
         RequestWrapper wrapper = new RequestWrapper<>();
         wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
         wrapper.setRequest(oauthDetailRequest);
 
         mockMvc.perform(post("/authorization/v2/oauth-details")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors").isNotEmpty())
+                .andExpect(jsonPath("$.errors[0].errorCode").value(ErrorConstants.INVALID_SCOPE));
+
+        mockMvc.perform(post("/authorization/v3/oauth-details")
                         .content(objectMapper.writeValueAsString(wrapper))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
@@ -638,6 +781,7 @@ public class AuthorizationControllerTest {
         oauthDetailRequest.setPrompt("login");
         oauthDetailRequest.setResponseType("code");
         oauthDetailRequest.setNonce("23424234TY");
+        oauthDetailRequest.setClaims(claimsV2);
         ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
         RequestWrapper wrapper = new RequestWrapper<>();
         wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
@@ -648,6 +792,13 @@ public class AuthorizationControllerTest {
         when(authorizationService.getOauthDetailsV2(oauthDetailRequest)).thenReturn(oauthDetailResponseV2);
 
         mockMvc.perform(post("/authorization/v2/oauth-details")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.transactionId").value("qwertyId"));
+
+        when(authorizationService.getOauthDetailsV3(Mockito.any(), Mockito.any())).thenReturn(oauthDetailResponseV2);
+        mockMvc.perform(post("/authorization/v3/oauth-details")
                         .content(objectMapper.writeValueAsString(wrapper))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
@@ -665,6 +816,7 @@ public class AuthorizationControllerTest {
         oauthDetailRequest.setPrompt("login");
         oauthDetailRequest.setResponseType("code");
         oauthDetailRequest.setNonce("23424234TY");
+        oauthDetailRequest.setClaims(claimsV2);
         ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
         RequestWrapper wrapper = new RequestWrapper<>();
         wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
@@ -675,6 +827,13 @@ public class AuthorizationControllerTest {
         when(authorizationService.getOauthDetailsV2(oauthDetailRequest)).thenReturn(oauthDetailResponseV2);
 
         mockMvc.perform(post("/authorization/v2/oauth-details")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.transactionId").value("qwertyId"));
+
+        when(authorizationService.getOauthDetailsV3(Mockito.any(), Mockito.any())).thenReturn(oauthDetailResponseV2);
+        mockMvc.perform(post("/authorization/v3/oauth-details")
                         .content(objectMapper.writeValueAsString(wrapper))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
@@ -692,6 +851,7 @@ public class AuthorizationControllerTest {
         oauthDetailRequest.setPrompt("login");
         oauthDetailRequest.setResponseType("code");
         oauthDetailRequest.setNonce("23424234TY");
+        oauthDetailRequest.setClaims(claimsV2);
         ZonedDateTime requestTime = ZonedDateTime.now(ZoneOffset.UTC);
         RequestWrapper wrapper = new RequestWrapper<>();
         wrapper.setRequestTime(requestTime.format(DateTimeFormatter.ofPattern(UTC_DATETIME_PATTERN)));
@@ -699,9 +859,16 @@ public class AuthorizationControllerTest {
 
         OAuthDetailResponseV2 oauthDetailResponseV2 = new OAuthDetailResponseV2();
         oauthDetailResponseV2.setTransactionId("qwertyId");
-        when(authorizationService.getOauthDetailsV2( oauthDetailRequest)).thenReturn(oauthDetailResponseV2);
+        when(authorizationService.getOauthDetailsV2(oauthDetailRequest)).thenReturn(oauthDetailResponseV2);
 
         mockMvc.perform(post("/authorization/v2/oauth-details")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.transactionId").value("qwertyId"));
+
+        when(authorizationService.getOauthDetailsV3(Mockito.any(), Mockito.any())).thenReturn(oauthDetailResponseV2);
+        mockMvc.perform(post("/authorization/v3/oauth-details")
                         .content(objectMapper.writeValueAsString(wrapper))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
@@ -758,7 +925,20 @@ public class AuthorizationControllerTest {
         AuthResponseV2 authResponseV2 = new AuthResponseV2();
         authResponseV2.setTransactionId("quewertyId");
         when(authorizationService.authenticateUserV2(authRequest)).thenReturn(authResponseV2);
+
         mockMvc.perform(post("/authorization/v2/authenticate")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.transactionId").value("quewertyId"));
+
+        AuthRequestV2 authRequestV2 = new AuthRequestV2();
+        authRequestV2.setIndividualId("1234567890");
+        authRequestV2.setTransactionId("quewertyId");
+        authRequestV2.setChallengeList(authChallengeList);
+        wrapper.setRequest(authRequestV2);
+        when(authorizationService.authenticateUserV3(Mockito.any(), Mockito.any())).thenReturn(authResponseV2);
+        mockMvc.perform(post("/authorization/v3/authenticate")
                         .content(objectMapper.writeValueAsString(wrapper))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
@@ -795,6 +975,14 @@ public class AuthorizationControllerTest {
                 .andExpect(jsonPath("$.errors").isNotEmpty())
                 .andExpect(jsonPath("$.errors[0].errorCode").value(ErrorConstants.INVALID_REQUEST))
                 .andExpect(jsonPath("$.errors[0].errorMessage").value("requestTime: invalid_request"));
+
+        mockMvc.perform(post("/authorization/v3/authenticate")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors").isNotEmpty())
+                .andExpect(jsonPath("$.errors[0].errorCode").value(ErrorConstants.INVALID_REQUEST))
+                .andExpect(jsonPath("$.errors[0].errorMessage").value("requestTime: invalid_request"));
     }
 
     @Test
@@ -818,6 +1006,13 @@ public class AuthorizationControllerTest {
         wrapper.setRequest(authRequest);
         when(authorizationService.authenticateUserV2(authRequest)).thenReturn(new AuthResponseV2());
         mockMvc.perform(post("/authorization/v2/authenticate")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors").isNotEmpty())
+                .andExpect(jsonPath("$.errors[0].errorCode").value("invalid_challenge_format"));
+
+        mockMvc.perform(post("/authorization/v3/authenticate")
                         .content(objectMapper.writeValueAsString(wrapper))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
@@ -849,6 +1044,11 @@ public class AuthorizationControllerTest {
                         .content(objectMapper.writeValueAsString(wrapper))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk());
+
+        mockMvc.perform(post("/authorization/v3/authenticate")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -877,6 +1077,13 @@ public class AuthorizationControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.errors").isNotEmpty())
                 .andExpect(jsonPath("$.errors[0].errorCode").value("invalid_challenge"));
+
+        mockMvc.perform(post("/authorization/v3/authenticate")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors").isNotEmpty())
+                .andExpect(jsonPath("$.errors[0].errorCode").value("invalid_challenge"));
     }
 
     @Test
@@ -900,6 +1107,13 @@ public class AuthorizationControllerTest {
         wrapper.setRequest(authRequest);
         when(authorizationService.authenticateUserV2(authRequest)).thenReturn(new AuthResponseV2());
         mockMvc.perform(post("/authorization/v2/authenticate")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors").isNotEmpty())
+                .andExpect(jsonPath("$.errors[0].errorCode").value("invalid_challenge"));
+
+        mockMvc.perform(post("/authorization/v3/authenticate")
                         .content(objectMapper.writeValueAsString(wrapper))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
@@ -936,6 +1150,14 @@ public class AuthorizationControllerTest {
         ResponseWrapper responseWrapper = objectMapper.readValue(mvcResult.getResponse().getContentAsString(), ResponseWrapper.class);
         Assert.assertTrue(responseWrapper.getErrors().size() == 1);
         Assert.assertTrue(errorCodes.contains(((Error)responseWrapper.getErrors().get(0)).getErrorCode()));
+
+        mvcResult=mockMvc.perform(post("/authorization/v3/authenticate")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk()).andReturn();
+        responseWrapper = objectMapper.readValue(mvcResult.getResponse().getContentAsString(), ResponseWrapper.class);
+        Assert.assertTrue(responseWrapper.getErrors().size() == 1);
+        Assert.assertTrue(errorCodes.contains(((Error)responseWrapper.getErrors().get(0)).getErrorCode()));
     }
 
     @Test
@@ -969,6 +1191,14 @@ public class AuthorizationControllerTest {
         ResponseWrapper responseWrapper = objectMapper.readValue(mvcResult.getResponse().getContentAsString(), ResponseWrapper.class);
         Assert.assertTrue(responseWrapper.getErrors().size() == 1);
         Assert.assertTrue(errorCodes.contains(((Error)responseWrapper.getErrors().get(0)).getErrorCode()));
+
+        mvcResult=mockMvc.perform(post("/authorization/v3/authenticate")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk()).andReturn();
+        responseWrapper = objectMapper.readValue(mvcResult.getResponse().getContentAsString(), ResponseWrapper.class);
+        Assert.assertTrue(responseWrapper.getErrors().size() == 1);
+        Assert.assertTrue(errorCodes.contains(((Error)responseWrapper.getErrors().get(0)).getErrorCode()));
     }
 
     @Test
@@ -1000,6 +1230,13 @@ public class AuthorizationControllerTest {
         Assert.assertTrue(responseWrapper.getErrors().size() == 1);
         Assert.assertTrue(errorCodes.contains(((Error)responseWrapper.getErrors().get(0)).getErrorCode()));
 
+        mvcResult=mockMvc.perform(post("/authorization/v3/authenticate")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk()).andReturn();
+        responseWrapper = objectMapper.readValue(mvcResult.getResponse().getContentAsString(), ResponseWrapper.class);
+        Assert.assertTrue(responseWrapper.getErrors().size() == 1);
+        Assert.assertTrue(errorCodes.contains(((Error)responseWrapper.getErrors().get(0)).getErrorCode()));
     }
 
     @Test
@@ -1030,6 +1267,14 @@ public class AuthorizationControllerTest {
         ResponseWrapper responseWrapper = objectMapper.readValue(mvcResult.getResponse().getContentAsString(), ResponseWrapper.class);
         Assert.assertTrue(responseWrapper.getErrors().size() == 1);
         Assert.assertTrue(errorCodes.contains(((Error)responseWrapper.getErrors().get(0)).getErrorCode()));
+
+        mvcResult=mockMvc.perform(post("/authorization/v3/authenticate")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk()).andReturn();
+        responseWrapper = objectMapper.readValue(mvcResult.getResponse().getContentAsString(), ResponseWrapper.class);
+        Assert.assertTrue(responseWrapper.getErrors().size() == 1);
+        Assert.assertTrue(errorCodes.contains(((Error)responseWrapper.getErrors().get(0)).getErrorCode()));
     }
 
     @Test
@@ -1058,6 +1303,14 @@ public class AuthorizationControllerTest {
                 .andExpect(jsonPath("$.errors").isNotEmpty())
                 .andExpect(jsonPath("$.errors[0].errorCode").value(ErrorConstants.INVALID_TRANSACTION_ID))
                 .andExpect(jsonPath("$.errors[0].errorMessage").value("request.transactionId: invalid_transaction_id"));
+
+        mockMvc.perform(post("/authorization/v3/authenticate")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors").isNotEmpty())
+                .andExpect(jsonPath("$.errors[0].errorCode").value(ErrorConstants.INVALID_TRANSACTION_ID))
+                .andExpect(jsonPath("$.errors[0].errorMessage").value("request.transactionId: invalid_transaction_id"));
     }
 
     @Test
@@ -1078,6 +1331,54 @@ public class AuthorizationControllerTest {
                 .andExpect(jsonPath("$.errors").isNotEmpty())
                 .andExpect(jsonPath("$.errors[0].errorCode").value(ErrorConstants.INVALID_CHALLENGE_LIST))
                 .andExpect(jsonPath("$.errors[0].errorMessage").value("request.challengeList: invalid_no_of_challenges"));
+
+        mockMvc.perform(post("/authorization/v3/authenticate")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors").isNotEmpty())
+                .andExpect(jsonPath("$.errors[0].errorCode").value(ErrorConstants.INVALID_CHALLENGE_LIST))
+                .andExpect(jsonPath("$.errors[0].errorMessage").value("request.challengeList: invalid_no_of_challenges"));
+    }
+
+    @Test
+    public void authenticateEndUser_throwsException_thenReturnErrorResponse() throws Exception {
+        AuthRequest authRequest = new AuthRequest();
+        authRequest.setIndividualId("1234567890");
+        authRequest.setTransactionId("1234567890");
+        AuthChallenge authChallenge = new AuthChallenge();
+        authChallenge.setChallenge("1234567890");
+        authChallenge.setAuthFactorType("PWD");
+        authChallenge.setFormat("alpha-numeric");
+        authRequest.setChallengeList(Arrays.asList(authChallenge));
+
+        RequestWrapper wrapper = new RequestWrapper<>();
+        wrapper.setRequestTime(IdentityProviderUtil.getUTCDateTime());
+        wrapper.setRequest(authRequest);
+
+        when(authorizationService.authenticateUserV2(authRequest)).thenThrow(new EsignetException());
+
+        mockMvc.perform(post("/authorization/v2/authenticate")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors").isNotEmpty())
+                .andExpect(jsonPath("$.errors[0].errorCode").value(UNKNOWN_ERROR));
+
+        AuthRequestV2 authRequestV2 = new AuthRequestV2();
+        authRequestV2.setIndividualId("1234567890");
+        authRequestV2.setTransactionId("1234567890");
+        authRequestV2.setChallengeList(Arrays.asList(authChallenge));
+        wrapper = new RequestWrapper<>();
+        wrapper.setRequestTime(IdentityProviderUtil.getUTCDateTime());
+        wrapper.setRequest(authRequestV2);
+        when(authorizationService.authenticateUserV3(Mockito.any(), Mockito.any())).thenThrow(new EsignetException());
+        mockMvc.perform(post("/authorization/v3/authenticate")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors").isNotEmpty())
+                .andExpect(jsonPath("$.errors[0].errorCode").value(UNKNOWN_ERROR));
     }
 
 
@@ -1171,7 +1472,36 @@ public class AuthorizationControllerTest {
               .andExpect(status().isOk())
               .andExpect(jsonPath("$.response.idToken").value("idToken"))
               .andExpect(jsonPath("$.errors").isEmpty());
-     }
+    }
+
+    @Test
+    public void prepareSignupRedirect_OnException_thenErrorResponse() throws Exception {
+        SignupRedirectRequest signupRedirectRequest = new SignupRedirectRequest();
+        signupRedirectRequest.setTransactionId("TransactionId");
+        signupRedirectRequest.setPathFragment("Path Fragment");
+
+        RequestWrapper<Object> wrapper = new RequestWrapper<>();
+        wrapper.setRequestTime(IdentityProviderUtil.getUTCDateTime());
+        wrapper.setRequest(signupRedirectRequest);
+
+        when(authorizationService.prepareSignupRedirect(Mockito.any(SignupRedirectRequest.class), Mockito.any(HttpServletResponse.class)))
+                .thenThrow(new EsignetException());
+        mockMvc.perform(post("/authorization/prepare-signup-redirect")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors").isNotEmpty())
+                .andExpect(jsonPath("$.errors[0].errorCode").value(UNKNOWN_ERROR));
+
+        when(authorizationService.prepareSignupRedirect(Mockito.any(SignupRedirectRequest.class), Mockito.any(HttpServletResponse.class)))
+                .thenThrow(new NullPointerException());
+        mockMvc.perform(post("/authorization/prepare-signup-redirect")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors").isNotEmpty())
+                .andExpect(jsonPath("$.errors[0].errorCode").value(UNKNOWN_ERROR));
+    }
     
     @Test
     public void prepareSignupRedirect_withInvalidTransactionId_thenFail() throws Exception {
@@ -1192,7 +1522,6 @@ public class AuthorizationControllerTest {
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.errors[0].errorCode").value(ErrorConstants.INVALID_TRANSACTION_ID));
-                ;
        }
     
     @Test
@@ -1221,7 +1550,7 @@ public class AuthorizationControllerTest {
   
 
     @Test
-    public void getClaimDetails_withValidDetails_thenSuccessResposne() throws Exception {
+    public void getClaimDetails_withValidDetails_thenSuccessResponse() throws Exception {
 
         ClaimDetailResponse claimDetailResponse = new ClaimDetailResponse();
         claimDetailResponse.setConsentAction(ConsentAction.CAPTURE);
@@ -1234,6 +1563,62 @@ public class AuthorizationControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.errors").isEmpty())
                 .andExpect(jsonPath("$.response.consentAction").value("CAPTURE"));
+    }
+
+    @Test
+    public void getClaimDetails_OnException_thenErrorResponse() throws Exception {
+        when(authorizationService.getClaimDetails("transactionId")).thenThrow(new InvalidTransactionException());
+
+        mockMvc.perform(get("/authorization/claim-details").header("oauth-details-key", "transactionId"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors").isNotEmpty())
+                .andExpect(jsonPath("$.errors[0].errorCode").value(INVALID_TRANSACTION));
+
+        when(authorizationService.getClaimDetails("test-transactionId")).thenThrow(new EsignetException());
+
+        mockMvc.perform(get("/authorization/claim-details").header("oauth-details-key", "test-transactionId"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors").isNotEmpty())
+                .andExpect(jsonPath("$.errors[0].errorCode").value(UNKNOWN_ERROR));
+    }
+
+    @Test
+    public void completeSignupRedirect_withValidDetails_thenSuccessResponse() throws Exception {
+        CompleteSignupRedirectRequest completeSignupRedirectRequest = new CompleteSignupRedirectRequest();
+        completeSignupRedirectRequest.setTransactionId("123131231");
+
+        RequestWrapper<Object> wrapper = new RequestWrapper<>();
+        wrapper.setRequestTime(IdentityProviderUtil.getUTCDateTime());
+        wrapper.setRequest(completeSignupRedirectRequest);
+
+        CompleteSignupRedirectResponse completeSignupRedirectResponse = new CompleteSignupRedirectResponse();
+        completeSignupRedirectResponse.setStatus("status");
+        when(authorizationService.completeSignupRedirect(completeSignupRedirectRequest)).thenReturn(completeSignupRedirectResponse);
+
+        mockMvc.perform(post("/authorization/complete-signup-redirect")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.status").value("status"));
+    }
+
+    @Test
+    public void completeSignupRedirect_OnException_thenErrorResponse() throws Exception {
+        CompleteSignupRedirectRequest completeSignupRedirectRequest = new CompleteSignupRedirectRequest();
+        completeSignupRedirectRequest.setTransactionId("123131231");
+
+        RequestWrapper<Object> wrapper = new RequestWrapper<>();
+        wrapper.setRequestTime(IdentityProviderUtil.getUTCDateTime());
+        wrapper.setRequest(completeSignupRedirectRequest);
+
+        when(authorizationService.completeSignupRedirect(Mockito.any())).thenThrow(new InvalidTransactionException());
+
+        mockMvc.perform(post("/authorization/complete-signup-redirect")
+                        .content(objectMapper.writeValueAsString(wrapper))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors").isNotEmpty())
+                .andExpect(jsonPath("$.errors[0].errorCode").value(INVALID_TRANSACTION));
     }
 
 }

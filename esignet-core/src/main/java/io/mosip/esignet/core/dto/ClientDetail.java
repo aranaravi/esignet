@@ -5,6 +5,7 @@
  */
 package io.mosip.esignet.core.dto;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import lombok.Data;
 
 import java.util.List;
@@ -13,6 +14,8 @@ import java.util.Map;
 
 @Data
 public class ClientDetail implements Serializable {
+
+    private static final long serialVersionUID = 1L;
 
     private String id;
     private Map<String, String> name;
@@ -25,4 +28,15 @@ public class ClientDetail implements Serializable {
     private String status;
     private List<String> grantTypes;
     private List<String> clientAuthMethods;
+    private JsonNode additionalConfig;
+
+    public String getAdditionalConfig(String fieldName, String defaultValue) {
+        if (this.additionalConfig != null) {
+            JsonNode fieldNode = this.additionalConfig.get(fieldName);
+            if (fieldNode != null) {
+                return fieldNode.asText();
+            }
+        }
+        return defaultValue;
+    }
 }

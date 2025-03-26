@@ -3,8 +3,7 @@ package io.mosip.esignet.controllers;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import io.mosip.esignet.core.dto.vci.ParsedAccessToken;
-import io.mosip.esignet.vci.services.VCICacheService;
+import io.mosip.esignet.core.config.LocalAuthenticationEntryPoint;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,10 +31,7 @@ public class CsrfControllerTest {
 	CacheUtilService cacheUtilService;
 
 	@MockBean
-	ParsedAccessToken parsedAccessToken;
-
-	@MockBean
-	VCICacheService vciCacheService;
+	LocalAuthenticationEntryPoint localAuthenticationEntryPoint;
 
 	ObjectMapper objectMapper = new ObjectMapper();
 

@@ -7,11 +7,13 @@ package io.mosip.esignet.core.constants;
 
 public class ErrorConstants {
 
+    public static final String INVALID_ADDITIONAL_CONFIG="invalid_additional_config";
     public static final String INVALID_REQUEST="invalid_request";
     public static final String INVALID_CLIENT_ID="invalid_client_id";
     public static final String INVALID_CLIENT_NAME="invalid_client_name";
     public static final String INVALID_CLIENT_NAME_MAP_KEY="invalid_language_code";
     public static final String INVALID_CLIENT_NAME_MAP_VALUE="invalid_client_name_value";
+    public static final String INVALID_CLIENT_NAME_LENGTH="invalid_client_name_length";
     public static final String INVALID_URI="invalid_uri";
     public static final String INVALID_RP_ID="invalid_rp_id";
     public static final String INVALID_RESPONSE_TYPE="invalid_response_type";
@@ -91,4 +93,6 @@ public class ErrorConstants {
     public static final String INVALID_PATH_FRAGMENT = "invalid_path_fragment";
     public static final String INVALID_VERIFICATION = "invalid_verification";
     public static final String INVALID_VERIFIED_CLAIMS = "invalid_verified_claims";
+    public static final String INVALID_PURPOSE="invalid_purpose";
+    public static final String VERIFICATION_INCOMPLETE = "verification_incomplete";
 }

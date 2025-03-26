@@ -40,7 +40,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
-import org.springframework.util.StringUtils;
 
 import java.util.*;
 
@@ -76,31 +75,38 @@ public class TokenServiceImpl implements TokenService {
 
     @Value("#{${mosip.esignet.credential.scope-resource-mapping}}")
     private Map<String, String> scopesResourceMapping;
+
+    @Value("${mosip.esignet.client-assertion-jwt.leeway-seconds:5}")
+    private int maxClockSkew;
     
+    private static Set<String> REQUIRED_TOKEN_CLAIMS;
     private static Set<String> REQUIRED_CLIENT_ASSERTION_CLAIMS;
 
     static {
-        REQUIRED_CLIENT_ASSERTION_CLAIMS = new HashSet<>();
-        REQUIRED_CLIENT_ASSERTION_CLAIMS.add("sub");
-        REQUIRED_CLIENT_ASSERTION_CLAIMS.add("aud");
-        REQUIRED_CLIENT_ASSERTION_CLAIMS.add("exp");
-        REQUIRED_CLIENT_ASSERTION_CLAIMS.add("iss");
-        REQUIRED_CLIENT_ASSERTION_CLAIMS.add("iat");
+        REQUIRED_TOKEN_CLAIMS = new HashSet<>();
+        REQUIRED_TOKEN_CLAIMS.add("sub");
+        REQUIRED_TOKEN_CLAIMS.add("aud");
+        REQUIRED_TOKEN_CLAIMS.add("exp");
+        REQUIRED_TOKEN_CLAIMS.add("iss");
+        REQUIRED_TOKEN_CLAIMS.add("iat");
+
+        REQUIRED_CLIENT_ASSERTION_CLAIMS = new HashSet<>(REQUIRED_TOKEN_CLAIMS);
+        REQUIRED_CLIENT_ASSERTION_CLAIMS.add("jti");
     }
 
 
     @Override
     public String getIDToken(@NonNull OIDCTransaction transaction) {
         JSONObject payload = buildIDToken(transaction.getPartnerSpecificUserToken(),
-                transaction.getClientId(), idTokenExpireSeconds, transaction);
+                transaction.getClientId(), idTokenExpireSeconds, transaction, null);
         payload.put(ACCESS_TOKEN_HASH, transaction.getAHash());
         return getSignedJWT(Constants.OIDC_SERVICE_APP_ID, payload);
     }
 
     @Override
     public String getIDToken(@NonNull String subject, @NonNull String audience, int validitySeconds,
-                             @NonNull OIDCTransaction transaction) {
-        JSONObject payload = buildIDToken(subject, audience, validitySeconds, transaction);
+                             @NonNull OIDCTransaction transaction, String nonce) {
+        JSONObject payload = buildIDToken(subject, audience, validitySeconds, transaction, nonce);
         return getSignedJWT(Constants.OIDC_SERVICE_APP_ID, payload);
     }
 
@@ -140,7 +146,7 @@ public class TokenServiceImpl implements TokenService {
             throw new EsignetException(ErrorConstants.INVALID_ASSERTION);
 
         try {
-      
+
             JWSKeySelector keySelector = new JWSVerificationKeySelector(JWSAlgorithm.RS256,
                     new ImmutableJWKSet(new JWKSet(RSAKey.parse(jwk))));
             DefaultJWTClaimsVerifier claimsSetVerifier = new DefaultJWTClaimsVerifier(new JWTClaimsSet.Builder()
@@ -148,7 +154,7 @@ public class TokenServiceImpl implements TokenService {
                     .issuer(clientId)
                     .subject(clientId)
                     .build(), REQUIRED_CLIENT_ASSERTION_CLAIMS);
-            claimsSetVerifier.setMaxClockSkew(0);
+            claimsSetVerifier.setMaxClockSkew(maxClockSkew);
 
             ConfigurableJWTProcessor jwtProcessor = new DefaultJWTProcessor();
             jwtProcessor.setJWSKeySelector(keySelector);
@@ -172,7 +178,7 @@ public class TokenServiceImpl implements TokenService {
                     .audience(clientId)
                     .issuer(issuerId)
                     .subject(subject)
-                    .build(), REQUIRED_CLIENT_ASSERTION_CLAIMS);
+                    .build(), REQUIRED_TOKEN_CLAIMS);
             claimsSetVerifier.verify(jwt.getJWTClaimsSet(), null);
         } catch (Exception e) {
             log.error("Access token claims verification failed", e);
@@ -191,7 +197,7 @@ public class TokenServiceImpl implements TokenService {
             JWTClaimsSetVerifier claimsSetVerifier = new DefaultJWTClaimsVerifier(new JWTClaimsSet.Builder()
                     .audience(clientId)
                     .issuer(issuerId)
-                    .build(), REQUIRED_CLIENT_ASSERTION_CLAIMS);
+                    .build(), REQUIRED_TOKEN_CLAIMS);
             claimsSetVerifier.verify(jwt.getJWTClaimsSet(), null);
         } catch (Exception e) {
             log.error("ID token claims verification failed", e);
@@ -213,7 +219,7 @@ public class TokenServiceImpl implements TokenService {
     }
 
     private JSONObject buildIDToken(String subject, String audience, int validitySeconds,
-                                    OIDCTransaction transaction) {
+                                    OIDCTransaction transaction, String nonce) {
         JSONObject payload = new JSONObject();
         payload.put(ISS, issuerId);
         payload.put(SUB, subject);
@@ -222,7 +228,7 @@ public class TokenServiceImpl implements TokenService {
         payload.put(IAT, issueTime);
         payload.put(EXP, issueTime + (validitySeconds<=0 ? 3600 : validitySeconds));
         payload.put(AUTH_TIME, transaction.getAuthTimeInSeconds());
-        payload.put(NONCE, transaction.getNonce());
+        payload.put(NONCE, nonce == null ? transaction.getNonce() : nonce);
         List<String> acrs = authenticationContextClassRefUtil.getACRs(transaction.getProvidedAuthFactors());
         payload.put(ACR, String.join(SPACE, acrs));
         return payload;

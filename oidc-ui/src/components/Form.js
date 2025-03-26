@@ -2,10 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import LoadingIndicator from "../common/LoadingIndicator";
-import {
-  buttonTypes,
-  configurationKeys,
-} from "../constants/clientConstants";
+import { buttonTypes, configurationKeys } from "../constants/clientConstants";
 import { LoadingStates as states } from "../constants/states";
 import FormAction from "./FormAction";
 import InputWithImage from "./InputWithImage";
@@ -18,13 +15,14 @@ let fieldsState = {};
 const langConfig = await langConfigService.getEnLocaleConfiguration();
 
 export default function Form({
+  param,
   authService,
   openIDConnectService,
   backButtonDiv,
+  secondaryHeading,
   i18nKeyPrefix1 = "Form",
-  i18nKeyPrefix2 = "errors"
+  i18nKeyPrefix2 = "errors",
 }) {
-  
   const { t: t1, i18n } = useTranslation("translation", {
     keyPrefix: i18nKeyPrefix1,
   });
@@ -32,11 +30,11 @@ export default function Form({
   const { t: t2 } = useTranslation("translation", {
     keyPrefix: i18nKeyPrefix2,
   });
-  
+
   const inputCustomClass =
     "h-10 border border-input bg-transparent px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-[hsla(0, 0%, 51%)] focus-visible:outline-none disabled:cursor-not-allowed disabled:bg-muted-light-gray shadow-none";
 
-  const fields = openIDConnectService.getEsignetConfiguration(configurationKeys.authFactorKnowledgeFieldDetails) ?? [];
+  const fields = param;
   fields.forEach((field) => (fieldsState["_form_" + field.id] = ""));
   const post_AuthenticateUser = authService.post_AuthenticateUser;
   const buildRedirectParams = authService.buildRedirectParams;
@@ -44,24 +42,17 @@ export default function Form({
   const [loginState, setLoginState] = useState(fieldsState);
   const [error, setError] = useState(null);
   const [errorBanner, setErrorBanner] = useState([]);
+  const [inputErrorBanner, setInputErrorBanner] = useState([]);
   const [status, setStatus] = useState(states.LOADED);
   const [invalidState, setInvalidState] = useState(true);
 
-  useEffect(() => {  
-  }, []);
+  useEffect(() => {}, []);
 
   const navigate = useNavigate();
 
-  const handleChange = (e, field) => {
-    const regex = new RegExp(field.regex);
-    const value = e.target.value;
-    
-    if (e.target.type === 'text' && field?.regex !== null && field?.regex !== undefined) {
-      setLoginState({ ...loginState, [e.target.id]: regex.test(value) || value === "" || value === null ? value : loginState[e.target.id] });
-    }
-    else {
-      setLoginState({ ...loginState, [e.target.id]: e.target.value });
-    }
+  const handleChange = (e) => {
+    onCloseHandle();
+    setLoginState({ ...loginState, [e.target.id]: e.target.value });
   };
 
   const handleSubmit = (e) => {
@@ -100,17 +91,28 @@ export default function Form({
   const resetCaptcha = () => {
     _reCaptchaRef.current.reset();
     setCaptchaToken(null);
-  }
+  };
 
   //Handle Login API Integration here
   const authenticateUser = async () => {
     try {
       let transactionId = openIDConnectService.getTransactionId();
-      let uin = loginState["_form_"+openIDConnectService.getEsignetConfiguration(configurationKeys.authFactorKnowledgeIndividualIdField) ?? ""];
+      let uin =
+        loginState[
+          "_form_" +
+            openIDConnectService.getEsignetConfiguration(
+              configurationKeys.authFactorKnowledgeIndividualIdField
+            ) ?? ""
+        ];
       let challengeManipulate = {};
-      fields.forEach(function(field) {
-        if(field.id !== openIDConnectService.getEsignetConfiguration(configurationKeys.authFactorKnowledgeIndividualIdField)){
-          challengeManipulate[field.id] = loginState["_form_"+field.id]
+      fields.forEach(function (field) {
+        if (
+          field.id !==
+          openIDConnectService.getEsignetConfiguration(
+            configurationKeys.authFactorKnowledgeIndividualIdField
+          )
+        ) {
+          challengeManipulate[field.id] = loginState["_form_" + field.id];
         }
       });
       let challenge = btoa(JSON.stringify(challengeManipulate));
@@ -137,27 +139,27 @@ export default function Form({
       const { response, errors } = authenticateResponse;
 
       if (errors != null && errors.length > 0) {
-        let errorCodeCondition = langConfig.errors.otp[errors[0].errorCode] !== undefined && langConfig.errors.kbi[errors[0].errorCode] !== null;
+        let errorCodeCondition =
+          langConfig.errors.otp[errors[0].errorCode] !== undefined &&
+          langConfig.errors.kbi[errors[0].errorCode] !== null;
 
         if (errorCodeCondition) {
           setErrorBanner({
             errorCode: `kbi.${errors[0].errorCode}`,
-            show: true
+            show: true,
           });
-        }
-        else if (errors[0].errorCode === "invalid_transaction") {
+        } else if (errors[0].errorCode === "invalid_transaction") {
           redirectOnError(errors[0].errorCode, t2(`${errors[0].errorCode}`));
-        }
-        else {
+        } else {
           setErrorBanner({
             errorCode: `${errors[0].errorCode}`,
-            show: true
+            show: true,
           });
         }
 
         if (showCaptcha) {
           resetCaptcha();
-        }      
+        }
         return;
       } else {
         setError(null);
@@ -179,13 +181,13 @@ export default function Form({
     } catch (error) {
       setErrorBanner({
         errorCode: "kbi.auth_failed",
-        show: true
+        show: true,
       });
       setStatus(states.ERROR);
 
       if (showCaptcha) {
         resetCaptcha();
-      }      
+      }
     }
   };
 
@@ -209,39 +211,60 @@ export default function Form({
     setErrorBanner(null);
   };
 
+  const onBlurChange = (e, errors) => {
+    let id = e.target.id;
+    let tempError = inputErrorBanner.map((_) => _);
+    if (errors.length > 0) {
+      tempError.push(id);
+    } else {
+      let errorIndex = tempError.findIndex((_) => _ === id);
+      if (errorIndex !== -1) {
+        tempError.splice(errorIndex, 1);
+      }
+    }
+    setInputErrorBanner(tempError);
+  };
+
   return (
     <>
-      <div className="grid grid-cols-8 items-center">
-      {(backButtonDiv)}
+      <div className="flex items-center">
+        {backButtonDiv}
+        <div className="inline mx-2 font-semibold my-3">
+          {t1(secondaryHeading)}
+        </div>
       </div>
 
       {errorBanner !== null && (
-        <ErrorBanner
-          showBanner={errorBanner.show}
-          errorCode={t2(errorBanner.errorCode)}
-          onCloseHandle={onCloseHandle}
-        />
+        <div className="mb-4">
+          <ErrorBanner
+            showBanner={errorBanner.show}
+            errorCode={t2(errorBanner.errorCode)}
+            onCloseHandle={onCloseHandle}
+          />
+        </div>
       )}
 
-      <form className="mt-6 space-y-6" onSubmit={handleSubmit}>
+      <form className="space-y-6" onSubmit={handleSubmit}>
         {fields.map((field) => (
-          <div className="-space-y-px">
+          <div className="-space-y-px" key={"_form-div_" + field.id}>
             <InputWithImage
               key={"_form_" + field.id}
-              handleChange={(e) => {
-                handleChange(e, field)
-              }}
+              handleChange={handleChange}
+              blurChange={onBlurChange}
               value={loginState["_form_" + field.id]}
-              labelText={t1(field.id)}
-              labelFor={field.id}
+              labelText={t1(field.labelText)}
+              labelFor={field.labelFor}
               id={"_form_" + field.id}
+              name={field.name}
               type={field.type}
-              isRequired={true}
-              placeholder={t1(field.id + "_placeholder" )}
+              isRequired={field.isRequired}
+              placeholder={t1(field.placeholder)}
               customClass={inputCustomClass}
               imgPath={null}
               icon={field.infoIcon}
               maxLength={field.maxLength}
+              errorCode={field.errorCode}
+              regex={field.regex}
             />
           </div>
         ))}
@@ -264,7 +287,7 @@ export default function Form({
           id="verify_form"
           disabled={
             invalidState ||
-            (errorBanner && errorBanner.length > 0) ||
+            (inputErrorBanner && inputErrorBanner.length > 0) ||
             (showCaptcha && captchaToken === null)
           }
         />

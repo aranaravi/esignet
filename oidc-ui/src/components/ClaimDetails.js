@@ -7,6 +7,7 @@ import ModalPopup from "../common/ModalPopup";
 import redirectOnError from "../helpers/redirectOnError";
 import { configurationKeys } from "../constants/clientConstants";
 import LoadingIndicator from "../common/LoadingIndicator";
+import { decodeHash } from "../helpers/utils";
 
 const ClaimDetails = ({
   i18nKeyPrefix1 = "consentDetails",
@@ -34,7 +35,7 @@ const ClaimDetails = ({
   const code = urlObj.hash.substring(1);
 
   // Decoding the Base64-encoded string (excluding the first character)
-  const decodedBase64 = atob(code);
+  const decodedBase64 = decodeHash(code);
 
   // Creating an instance of the openIDConnectService with decodedBase64, nonce, and state parameters
   const oidcService = new openIDConnectService(
@@ -89,7 +90,18 @@ const ClaimDetails = ({
     } else if (label === "voluntary") {
       return (
         <div>
-          <p className="mb-1">{t1("voluntaryClaimsTooltip")}</p>
+          <p className="mb-1">
+            <span className="!font-semibold">{t1("voluntary_claims")}: </span>
+            {t1("voluntaryClaimsTooltip")}
+          </p>
+          <p className="mb-1">
+            <span className="!font-semibold">{t1("verified_claims")}: </span>
+            {t1("verifiedClaimTooltip")}
+          </p>
+          <p className="mb-1">
+            <span className="!font-semibold">{t1("unverified_claims")}: </span>
+            {t1("unverifiedClaimTooltip")}
+          </p>
         </div>
       );
     }
@@ -155,6 +167,9 @@ const ClaimDetails = ({
 
   useEffect(() => {
     getAllClaimDetails();
+    if (document.getElementById("language_dropdown") !== null) {
+      document.getElementById("language_dropdown").style.display = "none";
+    }
   }, []);
 
   const handleProceed = async () => {
@@ -260,13 +275,21 @@ const ClaimDetails = ({
   ) : (
     <>
       <img
-        className="top_left_bg_logo hidden md:block"
-        alt="top left background"
-      />
-      <img
-        className="bottom_left_bg_logo hidden md:block"
-        alt="bottom left background"
-      />
+          className="top_left_bg_logo hidden md:block"
+          alt="top left background"
+        />
+        <img
+          className="bottom_left_bg_logo hidden md:block"
+          alt="bottom left background"
+        />
+        <img
+          className="top_right_bg_logo hidden md:block"
+          alt="top right background"
+        />
+        <img
+          className="bottom_right_bg_logo hidden md:block"
+          alt="bottom right background"
+        />
       <div
         className="relative z-50 consent-details"
         aria-labelledby="modal-title"
@@ -342,8 +365,8 @@ const ClaimDetails = ({
                           </div>
 
                           <div className="divide-y">
-                            {claimScope?.values?.map((item) => (
-                              <ul className="list-disc marker:text-[#B9B9B9] ml-4 !border-0">
+                            {claimScope?.values?.map((item, index) => (
+                              <ul key={`claim-${index}`} className="list-disc marker:text-[#B9B9B9] ml-4 !border-0">
                                 <li key={item} className="mb-1">
                                   <div className="claimsGrid">
                                     <div className="flex justify-start relative items-center mb-1 mt-1">

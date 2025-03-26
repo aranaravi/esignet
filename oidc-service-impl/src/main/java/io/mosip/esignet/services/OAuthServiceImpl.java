@@ -5,13 +5,16 @@
  */
 package io.mosip.esignet.services;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.jwk.JWK;
 import io.mosip.esignet.api.dto.KycExchangeDto;
 import io.mosip.esignet.api.dto.KycExchangeResult;
 import io.mosip.esignet.api.dto.KycSigningCertificateData;
 import io.mosip.esignet.api.dto.VerifiedKycExchangeDto;
-import io.mosip.esignet.api.dto.claim.ClaimDetail;
 import io.mosip.esignet.api.exception.KycExchangeException;
 import io.mosip.esignet.api.exception.KycSigningCertificateException;
 import io.mosip.esignet.api.spi.AuditPlugin;
@@ -38,8 +41,8 @@ import org.springframework.util.StringUtils;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static io.mosip.esignet.api.util.ErrorConstants.DATA_EXCHANGE_FAILED;
 import static io.mosip.esignet.core.constants.Constants.*;
@@ -72,6 +75,9 @@ public class OAuthServiceImpl implements OAuthService {
 
     @Autowired
     private SecurityHelperService securityHelperService;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Value("${mosip.esignet.access-token-expire-seconds:60}")
     private int accessTokenExpireSeconds;
@@ -254,25 +260,42 @@ public class OAuthServiceImpl implements OAuthService {
             kycExchangeDto.setAcceptedClaims(transaction.getAcceptedClaims());
             kycExchangeDto.setClaimsLocales(transaction.getClaimsLocales());
             kycExchangeDto.setIndividualId(authorizationHelperService.getIndividualId(transaction));
-            kycExchangeDto.setAcceptedVerifiedClaims(new HashMap<>());
 
-            if(!CollectionUtils.isEmpty(transaction.getAcceptedClaims()) && transaction.getRequestedClaims().getUserinfo() != null) {
+            Map<String, JsonNode> acceptedClaimDetails = new HashMap<>();
+            if(!CollectionUtils.isEmpty(transaction.getAcceptedClaims())) {
                 for(String claim : transaction.getAcceptedClaims()) {
-                    ClaimDetail claimDetail = transaction.getRequestedClaims().getUserinfo().get(claim);
-                    if(claimDetail != null && claimDetail.getVerification()!=null) {
-                        kycExchangeDto.getAcceptedVerifiedClaims().put(claim, claimDetail.getVerification());
+                    acceptedClaimDetails.put(claim, transaction.getRequestedClaimDetails() != null ?
+                            transaction.getRequestedClaimDetails().get(claim) : null);
+                }
+
+                JsonNode verifiedClaims = transaction.getRequestedClaimDetails() != null ? transaction.getRequestedClaimDetails().get(VERIFIED_CLAIMS) : null;
+                if (verifiedClaims != null) {
+                    if(verifiedClaims.isArray()) {
+                        ArrayNode arrayNode = objectMapper.createArrayNode();
+                        Iterator<JsonNode> itr = verifiedClaims.iterator();
+                        while(itr.hasNext()) {
+                            JsonNode jsonNode = removeDeniedClaims(transaction.getAcceptedClaims(), itr.next());
+                            if(jsonNode != null) { arrayNode.add(jsonNode); }
+                        }
+                        acceptedClaimDetails.put(VERIFIED_CLAIMS, arrayNode);
+                    }
+                    else {
+                        JsonNode jsonNode = removeDeniedClaims(transaction.getAcceptedClaims(), verifiedClaims);
+                        if(jsonNode != null) { acceptedClaimDetails.put(VERIFIED_CLAIMS, verifiedClaims); }
                     }
                 }
             }
+            kycExchangeDto.setAcceptedClaimDetails(acceptedClaimDetails);
+            kycExchangeDto.setUserInfoResponseType(transaction.getUserInfoResponseType());
 
             if(transaction.isInternalAuthSuccess()) {
                 log.info("Internal kyc exchange is invoked as the transaction is marked as internal auth success");
                 kycExchangeResult = doInternalKycExchange(kycExchangeDto);
             } else {
-                kycExchangeResult = kycExchangeDto.getAcceptedVerifiedClaims().isEmpty() ?
-                        authenticationWrapper.doKycExchange(transaction.getRelyingPartyId(),
-                        transaction.getClientId(), kycExchangeDto) :
+                kycExchangeResult = acceptedClaimDetails.containsKey(VERIFIED_CLAIMS) ?
                         authenticationWrapper.doVerifiedKycExchange(transaction.getRelyingPartyId(),
+                                transaction.getClientId(), kycExchangeDto) :
+                        authenticationWrapper.doKycExchange(transaction.getRelyingPartyId(),
                         transaction.getClientId(), kycExchangeDto);
             }
 
@@ -301,5 +324,19 @@ public class OAuthServiceImpl implements OAuthService {
                 transaction.getPermittedScopes() != null &&
                 transaction.getPermittedScopes().stream()
                         .anyMatch(scope -> transaction.getRequestedCredentialScopes().contains(scope)));
+    }
+
+    private JsonNode removeDeniedClaims(List<String> acceptedClaims, JsonNode verifiedClaim) {
+        if(verifiedClaim.hasNonNull("claims")) {
+            Iterator<String> requestedClaims = verifiedClaim.get("claims").deepCopy().fieldNames();
+            while(requestedClaims.hasNext()) {
+                String claimName = requestedClaims.next();
+                if(!acceptedClaims.contains(claimName)) {
+                    ((ObjectNode)verifiedClaim.get("claims")).remove(claimName);
+                }
+            }
+            return verifiedClaim.get("claims").isEmpty() ? null : verifiedClaim;
+        }
+        return null;
     }
 }

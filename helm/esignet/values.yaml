@@ -52,7 +52,7 @@ service:
 
 image:
   registry: docker.io
-  repository: mosipqa/esignet
+  repository: mosipdev/esignet-with-plugins
   tag: develop
   ## Specify a imagePullPolicy
   ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
@@ -77,10 +77,10 @@ startupProbe:
   httpGet:
     path: /v1/esignet/actuator/health
     port: 8088
-  initialDelaySeconds: 0
+  initialDelaySeconds: 180
   periodSeconds: 10
   timeoutSeconds: 5
-  failureThreshold: 30
+  failureThreshold: 60
   successThreshold: 1
 
 livenessProbe:
@@ -88,7 +88,7 @@ livenessProbe:
   httpGet:
     path: /v1/esignet/actuator/health
     port: 8088
-  initialDelaySeconds: 20
+  initialDelaySeconds: 200
   periodSeconds: 10
   timeoutSeconds: 5
   failureThreshold: 6
@@ -99,7 +99,7 @@ readinessProbe:
   httpGet:
     path: /v1/esignet/actuator/health
     port: 8088
-  initialDelaySeconds: 0
+  initialDelaySeconds: 180
   periodSeconds: 10
   timeoutSeconds: 5
   failureThreshold: 6
@@ -240,20 +240,93 @@ updateStrategy:
 ##   - name: FOO
 ##     value: "bar"
 ##
-extraEnvVars: []
+
+extraEnvVars: |
+  - name: KEYCLOAK_EXTERNAL_URL
+    valueFrom:
+      configMapKeyRef:
+        name: keycloak-host
+        key: keycloak-external-url
+  - name: MOSIP_ESIGNET_CAPTCHA_SITE_KEY
+    valueFrom:
+      secretKeyRef:
+        name: esignet-captcha
+        key: esignet-captcha-site-key
+  - name: MOSIP_ESIGNET_CAPTCHA_MODULE_NAME
+    value: esignet
+  - name: REDIS_HOST
+    valueFrom:
+      configMapKeyRef:
+        name: redis-config
+        key: redis-host
+  - name: REDIS_PORT
+    valueFrom:
+      configMapKeyRef:
+        name: redis-config
+        key: redis-port
+  - name: REDIS_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: redis
+        key: redis-password
+  - name: DATABASE_HOST
+    valueFrom:
+      configMapKeyRef:
+        name: postgres-config
+        key: database-host
+  - name: DATABASE_PORT
+    valueFrom:
+      configMapKeyRef:
+        name: postgres-config
+        key: database-port
+  - name: DATABASE_NAME
+    valueFrom:
+      configMapKeyRef:
+        name: postgres-config
+        key: database-name
+  - name: DATABASE_USERNAME
+    valueFrom:
+      configMapKeyRef:
+        name: postgres-config
+        key: database-username
+  - name: DB_DBUSER_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: db-common-secrets
+        key: db-dbuser-password
+  - name: SOFTHSM_ESIGNET_SECURITY_PIN
+    valueFrom:
+      secretKeyRef:
+        name: esignet-softhsm
+        key: security-pin
+  - name: MOSIP_ESIGNET_HOST
+    valueFrom:
+      configMapKeyRef:
+        name: esignet-global
+        key: mosip-esignet-host
+  - name: MOSIP_SIGNUP_HOST
+    valueFrom:
+      configMapKeyRef:
+        name: esignet-global
+        key: mosip-signup-host
+  - name: MOSIP_IDA_CLIENT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: keycloak-client-secrets
+        key: mosip_ida_client_secret
+  - name: MOSIP_ESIGNET_MISP_KEY
+    valueFrom:
+      secretKeyRef:
+        name: esignet-misp-onboarder-key
+        key: mosip-esignet-misp-key
 
 ## ConfigMap with extra environment variables that used
 ##
 extraEnvVarsCM:
-  - global
-  - config-server-share
-  - artifactory-share
-  - softhsm-esignet-share
-
+  - esignet-softhsm-share
 ## Secret with extra environment variables
 ##
-extraEnvVarsSecret:
-
+extraEnvVarsSecret: []
 ## Extra volumes to add to the deployment
 ##
 extraVolumes: []
@@ -292,7 +365,7 @@ initContainers:
         value: "true"
     envFrom:
       - configMapRef:
-          name: global
+          name: esignet-global
     image: docker.io/openjdk:11-jre
     imagePullPolicy: Always
     name: cacerts
@@ -459,3 +532,5 @@ istio:
 enable_insecure: false
 springConfigNameEnv:
 activeProfileEnv:
+pluginNameEnv: esignet-mock-plugin.jar
+pluginUrlEnv:

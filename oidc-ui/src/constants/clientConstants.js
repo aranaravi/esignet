@@ -93,7 +93,11 @@ const configurationKeys = {
   eKYCStepsConfig: "eKYC-steps.config",
   bannerCloseTimer: "error.banner.close-timer",
   authFactorKnowledgeFieldDetails: "auth.factor.kbi.field-details",
-  authFactorKnowledgeIndividualIdField: "auth.factor.kbi.individual-id-field"
+  authFactorKnowledgeIndividualIdField: "auth.factor.kbi.individual-id-field",
+  loginIdOptions: "login-id.options",
+  additionalConfig: "clientAdditionalConfig",
+  signupBannerRequired: "signup_banner_required",
+  forgotPwdLinkRequired: "forgot_pwd_link_required"
 };
 
 const modalityIconPath = {
@@ -101,9 +105,48 @@ const modalityIconPath = {
   OTP: "images/otp_icon.svg",
   WALLET: "images/wallet_icon.svg",
   BIO: "images/bio_icon.svg",
-  PWD: "images/sign_in_with_otp.png",
-  KBI: "images/sign_in_with_kba.png"
+  PWD: "images/pwd_icon.svg",
+  KBI: "images/kbi_icon.svg"
 };
+
+const errorCodeObj = {
+  dismiss: "consent_rejected",
+  invalid_transaction: "invalid_transaction",
+  incompatible_browser: "incompatible_browser",
+  ekyc_failed: "ekyc_failed",
+  no_ekyc_provider: "no_ekyc_provider"
+};
+
+const purposeTitleKey = {
+  login: "login_heading",
+  verify: "verify_heading",
+  link: "link_heading"
+}
+
+const purposeSubTitleKey = {
+  login: "login_subheading",
+  verify: "verify_subheading",
+  link: "link_subheading"
+}
+
+const authLabelKey = {
+  login: "login_with_id",
+  verify: "verify_with_id",
+  link: "link_using_id",
+}
+
+const multipleIdKey = {
+  login: "login_with_id_multiple",
+  verify: "verify_with_id_multiple",
+  link: "link_using_id_multiple",
+}
+
+const purposeTypeObj = {
+  login: "login",
+  verify: "verify",
+  link: "link",
+  none: "none"
+}
 
 export {
   deviceType,
@@ -115,4 +158,10 @@ export {
   challengeFormats,
   walletConfigKeys,
   modalityIconPath,
+  errorCodeObj,
+  purposeTitleKey,
+  purposeTypeObj,
+  purposeSubTitleKey,
+  authLabelKey,
+  multipleIdKey
 };
